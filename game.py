@@ -12,6 +12,7 @@ class Game:
         s.chat, s.team = chat, team
         s.ids, s.names = [], []
         s.started, s.mid = False, None
+        s.turn_mid = s.pin_mid = None
 
     def seat(s, uid): return s.ids.index(uid) if uid in s.ids else None
 
