@@ -1,4 +1,4 @@
-import random, html
+import random, html, time
 R = ["6", "7", "8", "9", "10", "J", "Q", "K", "A"]
 S = "♠♥♦♣"
 
@@ -13,6 +13,7 @@ class Game:
         s.ids, s.names = [], []
         s.started, s.mid = False, None
         s.turn_mid = s.pin_mid = None
+        s.place = []
 
     def seat(s, uid): return s.ids.index(uid) if uid in s.ids else None
 
@@ -23,6 +24,8 @@ class Game:
         s.deck = [r + su for r in R for su in S]; random.shuffle(s.deck)
         s.trump = s.deck[0][-1]
         s.hands = [[s.deck.pop() for _ in range(6)] for _ in range(s.n)]
+        s.got = [6] * s.n
+        s.t0 = time.time()
         tr = [(rk(c), i) for i, h in enumerate(s.hands) for c in h if c[-1] == s.trump]
         s.att = min(tr)[1] if tr else 0
         s.out, s.started = set(), True
@@ -61,15 +64,19 @@ class Game:
 
     def finish(s, took):
         cards = [c for t in s.table for c in t if c]
-        if took: s.hands[s.dfn] += cards
+        if took:
+            s.hands[s.dfn] += cards
+            s.got[s.dfn] += len(cards)
         order = [(s.att + k) % s.n for k in range(s.n)]
         order = [x for x in order if x != s.dfn] + [s.dfn]
         for x in order:
-            while len(s.hands[x]) < 6 and s.deck: s.hands[x].append(s.deck.pop())
+            while len(s.hands[x]) < 6 and s.deck:
+                s.hands[x].append(s.deck.pop()); s.got[x] += 1
         for x in range(s.n):
-            if not s.hands[x] and not s.deck: s.out.add(x)
+            if not s.hands[x] and not s.deck and x not in s.out:
+                s.out.add(x); s.place.append(x)
         res = s.result()
-        if res: return res
+        if res: return s.summary(res)
         s.att = s.nxt(s.dfn) if took or s.dfn in s.out else s.dfn
         s.new_round()
 
@@ -84,7 +91,16 @@ class Game:
                 return f"🏆 Jamoa {t+1} yutdi: {e(s.names[t])} va {e(s.names[t+2])}"
         else:
             if not alive: return "🤝 Durang!"
-            if len(alive) == 1: return f"🤡 Durak: {e(s.names[alive[0]])}"
+            if len(alive) == 1:
+                w = f"🏆 {e(s.names[s.place[0]])} yutdi!\n" if s.place else ""
+                return f"{w}🤡 Durak: {e(s.names[alive[0]])}"
+
+    def summary(s, head):
+        lines = "\n".join(
+            f"{html.escape(s.names[i])}{' [J' + str(i % 2 + 1) + ']' if s.team else ''} ({len(s.hands[i])} / {s.got[i]})"
+            for i in range(s.n))
+        mins = max(1, round((time.time() - s.t0) / 60))
+        return f"{head}\n\n{lines}\n\n⏳ O'yin vaqti: {mins} daqiqa"
 
     def render(s, bot):
         t = f"🃏 <b>Durak{' · Jamoaviy' if s.team else ''}</b>\nKozir: <b>{s.trump}</b> · To'plam: {len(s.deck)}\n"

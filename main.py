@@ -3,13 +3,27 @@ from aiohttp import web
 from aiogram import Bot, Dispatcher, F
 from aiogram.filters import Command
 from aiogram.types import (CallbackQuery, InlineQuery, Message, BufferedInputFile,
-    InlineKeyboardMarkup, InlineKeyboardButton, InlineQueryResultPhoto, InlineQueryResultsButton)
+    InlineKeyboardMarkup, InlineKeyboardButton, InlineQueryResultPhoto, InlineQueryResultCachedSticker, InlineQueryResultsButton)
 from game import Game, sort_cards
 from cards import card_jpg, by_name, url_name
 
 bot, dp = Bot(os.environ["BOT_TOKEN"]), Dispatcher()
 games, where, BOT, BOT_ID = {}, {}, "", 0
 BASE = (os.environ.get("BASE_URL") or os.environ.get("RENDER_EXTERNAL_URL", "")).rstrip("/")
+
+SET = os.environ.get("STICKER_SET", "PlayingCards_Alexzhdanov")
+ORDER = [r + s for r in ["6", "7", "8", "9", "10", "J", "Q"] for s in "♥♦♣♠"] + [r + s for r in ["K", "A"] for s in "♥♦♠♣"]
+STK, UNQ = {}, {}   # karta -> file_id, file_unique_id -> karta
+
+async def load_stickers():
+    try:
+        st = await bot.get_sticker_set(SET)
+        cards = st.stickers[2:38]          # boshidagi 2 ta va oxirgi joker olinmaydi
+        if len(cards) == 36:
+            for c, s in zip(ORDER, cards):
+                STK[c] = s.file_id; UNQ[s.file_unique_id] = c
+    except Exception as e:
+        print("Stikerlar yuklanmadi:", e)
 
 def kb(rows): return InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text=t, callback_data=d) for t, d in r] for r in rows])
 JOIN = kb([[("➕ Qo'shilish", "j")]])
@@ -47,10 +61,13 @@ async def turn(g):
     g.turn_mid = m.message_id if m else None
 
 async def pin_trump(g):
-    m = await safe(bot.send_photo(g.chat, BufferedInputFile(card_jpg(g.deck[0]), "k.jpg"), caption=f"Kozir: {g.trump}"))
-    if m:
-        g.pin_mid = m.message_id
-        await safe(bot.pin_chat_message(g.chat, m.message_id, disable_notification=True))
+    c = g.deck[0]
+    if c in STK: await safe(bot.send_sticker(g.chat, STK[c]))
+    else: await safe(bot.send_photo(g.chat, BufferedInputFile(card_jpg(c), "k.jpg")))
+    t = await safe(bot.send_message(g.chat, f"🃏 Kozir: <b>{g.trump}</b>", parse_mode="HTML"))
+    if t:
+        g.pin_mid = t.message_id
+        await safe(bot.pin_chat_message(g.chat, t.message_id, disable_notification=True))
 
 async def begin(g):
     g.start()
@@ -122,21 +139,37 @@ def photo(c):
     u = f"{BASE}/c/{url_name(c)}.jpg"
     return InlineQueryResultPhoto(id=c, photo_url=u, thumbnail_url=u, photo_width=320, photo_height=448, caption=f"🃏 {c}")
 
+def result(c):
+    if c in STK: return InlineQueryResultCachedSticker(id=url_name(c), sticker_file_id=STK[c])
+    return photo(c)
+
 @dp.inline_query()
 async def iq(q: InlineQuery):
     g = games.get(where.get(q.from_user.id))
     cards = sort_cards(g.legal(g.seat(q.from_user.id))) if g and g.started else []
-    res = [photo(c) for c in cards]
+    res = [result(c) for c in cards]
     kw = {} if res else {"button": InlineQueryResultsButton(text="Hozir karta tashlay olmaysiz", start_parameter="info")}
     await q.answer(res, cache_time=0, is_personal=True, **kw)
 
 @dp.message(F.via_bot)
 async def moved(m: Message):
-    txt = m.caption or m.text or ""
-    if m.via_bot.id != BOT_ID or not txt.startswith("🃏 "): return
+    if m.via_bot.id != BOT_ID: return
+    c = UNQ.get(m.sticker.file_unique_id) if m.sticker else None
+    if not c:
+        txt = m.caption or m.text or ""
+        if not txt.startswith("🃏 "): return
+        c = txt[2:].strip()
     g = games.get(where.get(m.from_user.id))
-    if g and g.started and g.play(g.seat(m.from_user.id), txt[2:].strip()):
+    if g and g.started and g.play(g.seat(m.from_user.id), c):
         await after(g)
+
+@dp.message(Command("tekshir"))
+async def check(m: Message):
+    if not STK: return await m.answer("Stikerlar yuklanmadi, kartalar rasm bilan ishlaydi.")
+    for i in range(0, 36, 6):
+        for c in ORDER[i:i + 6]:
+            await m.answer_sticker(STK[c]); await asyncio.sleep(0.4)
+        await m.answer(" ".join(ORDER[i:i + 6]))
 
 async def card_img(req):
     try: return web.Response(body=by_name(req.match_info["n"]), content_type="image/jpeg")
@@ -150,6 +183,7 @@ async def main():
     runner = web.AppRunner(app); await runner.setup()
     await web.TCPSite(runner, "0.0.0.0", int(os.environ.get("PORT", 8000))).start()
     me = await bot.get_me(); BOT, BOT_ID = me.username, me.id
+    await load_stickers()
     await dp.start_polling(bot, allowed_updates=dp.resolve_used_update_types())
 
 asyncio.run(main())
