@@ -12,11 +12,13 @@ games, where, BOT, BOT_ID = {}, {}, "", 0
 
 def kb(rows): return InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text=t, callback_data=d) for t, d in r] for r in rows])
 JOIN = kb([[("➕ Qo'shilish", "j")]])
+def jk(g): return kb([[("➕ Qo'shilish", "j")]] + ([[("▶️ Boshlash", "s")]] if not g.team and len(g.ids) >= 2 else []))
 PLAY = kb([[("🃏 Kartalarim", "h")], [("🛡 Olaman", "t"), ("✅ Bito", "b")]])
 
 def lobby(g):
     names = "\n".join("• " + html.escape(n) for n in g.names)
-    return f"🃏 <b>Durak{' · Jamoaviy' if g.team else ''}</b>\nO'yinchilar ({len(g.ids)}/4):\n{names}"
+    hint = "4 kishi kerak" if g.team else "2-4 kishi (4 ta bo'lsa o'zi boshlanadi)"
+    return f"🃏 <b>Durak{' · Jamoaviy' if g.team else ''}</b>\nO'yinchilar ({len(g.ids)}/4):\n{names}\n\n{hint}"
 
 async def edit(g, text, markup=PLAY):
     try:
@@ -53,7 +55,11 @@ async def cb(q: CallbackQuery):
         if g.started: return await q.answer("O'yin boshlangan")
         if u.id in where: return await q.answer("Siz allaqachon o'yindasiz", show_alert=True)
         g.ids.append(u.id); g.names.append(u.first_name); where[u.id] = g.chat
-        if len(g.ids) < 4: return await edit(g, lobby(g), JOIN) or await q.answer()
+        if len(g.ids) < 4: return await edit(g, lobby(g), jk(g)) or await q.answer()
+        g.start(); await edit(g, g.render(BOT)); return await q.answer()
+    if q.data == "s":
+        if g.started or g.team or u.id not in g.ids or len(g.ids) < 2:
+            return await q.answer("Boshlab bo'lmaydi", show_alert=True)
         g.start(); await edit(g, g.render(BOT)); return await q.answer()
     s = g.seat(u.id)
     if s is None or not g.started: return await q.answer("Siz o'yinda emassiz", show_alert=True)

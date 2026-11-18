@@ -18,17 +18,18 @@ class Game:
     def start(s):
         z = list(zip(s.ids, s.names)); random.shuffle(z)   # o'rindiqlar: 0&2 va 1&3 sherik
         s.ids, s.names = [a for a, _ in z], [b for _, b in z]
+        s.n = len(s.ids)
         s.deck = [r + su for r in R for su in S]; random.shuffle(s.deck)
         s.trump = s.deck[0][-1]
-        s.hands = [[s.deck.pop() for _ in range(6)] for _ in range(4)]
+        s.hands = [[s.deck.pop() for _ in range(6)] for _ in range(s.n)]
         tr = [(rk(c), i) for i, h in enumerate(s.hands) for c in h if c[-1] == s.trump]
         s.att = min(tr)[1] if tr else 0
         s.out, s.started = set(), True
         s.new_round()
 
     def nxt(s, i):
-        for k in range(1, 5):
-            j = (i + k) % 4
+        for k in range(1, s.n + 1):
+            j = (i + k) % s.n
             if j not in s.out: return j
 
     def new_round(s):
@@ -60,11 +61,11 @@ class Game:
     def finish(s, took):
         cards = [c for t in s.table for c in t if c]
         if took: s.hands[s.dfn] += cards
-        order = [(s.att + k) % 4 for k in range(4)]
+        order = [(s.att + k) % s.n for k in range(s.n)]
         order = [x for x in order if x != s.dfn] + [s.dfn]
         for x in order:
             while len(s.hands[x]) < 6 and s.deck: s.hands[x].append(s.deck.pop())
-        for x in range(4):
+        for x in range(s.n):
             if not s.hands[x] and not s.deck: s.out.add(x)
         res = s.result()
         if res: return res
@@ -72,7 +73,7 @@ class Game:
         s.new_round()
 
     def result(s):
-        alive = [i for i in range(4) if i not in s.out]
+        alive = [i for i in range(s.n) if i not in s.out]
         e = html.escape
         if s.team:
             done = [t for t in (0, 1) if {t, t + 2} <= s.out]
@@ -87,7 +88,7 @@ class Game:
     def render(s, bot):
         t = f"🃏 <b>Durak{' · Jamoaviy' if s.team else ''}</b>\nKozir: <b>{s.trump}</b> · To'plam: {len(s.deck)}\n"
         t += "Stol: " + (", ".join(f"{a}→{d or '?'}" for a, d in s.table) or "bo'sh") + "\n\n"
-        for i in range(4):
+        for i in range(s.n):
             tag = " ✅ chiqdi" if i in s.out else " ⚔️ hujum" if i == s.att else " 🛡 himoya" if i == s.dfn else ""
             tm = f" [J{i%2+1}]" if s.team else ""
             t += f"{html.escape(s.names[i])}{tm}: {len(s.hands[i])} karta{tag}\n"
