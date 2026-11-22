@@ -102,8 +102,8 @@ async def after(g, res=None):
 
 async def cleanup(g):
     if g.turn_mid: await safe(bot.delete_message(g.chat, g.turn_mid))
-    pin = getattr(g, "pin_mid", None)
-    if pin: await safe(bot.unpin_chat_message(g.chat, pin))
+    for pin in (getattr(g, "pin_mid", None), getattr(g, "rpin", None)):
+        if pin: await safe(bot.unpin_chat_message(g.chat, pin))
     for u in g.ids: where.pop(u, None)
     games.pop(g.chat, None)
 
@@ -128,6 +128,7 @@ async def stop(m: Message):
 
 @dp.callback_query()
 async def cb(q: CallbackQuery):
+    if q.data and q.data.startswith("p:"): return await lpick(q)
     if q.data == "x": return await q.answer("🂠 Yashirin karta")
     g, u = games.get(q.message.chat.id), q.from_user
     if not g: return await q.answer("O'yin yo'q", show_alert=True)
@@ -216,13 +217,26 @@ async def lturn(g):
     else:
         txt = f"{mention(g, g.cur)}, karta tashlang"
         rows = []
-    markup = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="🃏 Karta tanlash", switch_inline_query_current_chat="")]]
-        + [[InlineKeyboardButton(text=t, callback_data=d) for t, d in r] for r in rows])
+    kb_rows = []
+    if len(g.played) < 3 and g.hands[g.cur]:
+        kb_rows.append([InlineKeyboardButton(text=str(i + 1), callback_data=f"n:{i}") for i in range(len(g.hands[g.cur]))])
+    kb_rows.append([InlineKeyboardButton(text="🃏 Kartalarim", callback_data="h")])
+    kb_rows += [[InlineKeyboardButton(text=t, callback_data=d) for t, d in r] for r in rows]
+    markup = InlineKeyboardMarkup(inline_keyboard=kb_rows)
     m = await safe(bot.send_message(g.chat, txt, reply_markup=markup, parse_mode="HTML"))
     g.turn_mid = m.message_id if m else None
 
 async def lround(g):
+    old = getattr(g, "rpin", None)
+    if old: await safe(bot.unpin_chat_message(g.chat, old))
+    g.rpin = None
     await safe(bot.send_message(g.chat, f"🔄 Yangi raund! Stol kartasi: <b>{RUS[g.table]}</b>", parse_mode="HTML"))
+    stk = RFID.get(g.table)
+    if stk:
+        s = await safe(bot.send_sticker(g.chat, stk))
+        if s:
+            g.rpin = s.message_id
+            await safe(bot.pin_chat_message(g.chat, s.message_id, disable_notification=True))
 
 async def lbegin(g):
     g.start()
@@ -232,11 +246,11 @@ async def lbegin(g):
 
 async def lclaim(g, seat, n):
     if g.turn_mid: await safe(bot.delete_message(g.chat, g.turn_mid))
-    row = [InlineKeyboardButton(text="🤡 Yolg'onchi", callback_data="c")]
-    if g.hands[g.cur]: row.append(InlineKeyboardButton(text="🥰 Ishondim", callback_data="i"))
+    rows = [[InlineKeyboardButton(text="🤡 Yolg'onchi", callback_data="c")]]
+    if g.hands[g.cur]: rows.append([InlineKeyboardButton(text="🥰 Ishondim", callback_data="i")])
     txt = (f"{mention(g, seat)} {n} ta karta tanladi va deydi: <b>{RUS[g.table]}</b>\n"
            f"{mention(g, g.cur)}, siz nima deysiz?")
-    m = await safe(bot.send_message(g.chat, txt, reply_markup=InlineKeyboardMarkup(inline_keyboard=[row]), parse_mode="HTML"))
+    m = await safe(bot.send_message(g.chat, txt, reply_markup=InlineKeyboardMarkup(inline_keyboard=rows), parse_mode="HTML"))
     g.turn_mid = m.message_id if m else None
 
 async def lend(g, seat):
@@ -250,10 +264,10 @@ async def lchallenge(g, seat):
     r = g.challenge(seat)
     if r is None: return False
     cards, truthful, liar, loser = r
-    for c in cards:
-        if c in RFID: await safe(bot.send_sticker(g.chat, RFID[c]))
     verdict = "hammasi rost ✅" if truthful else "yolg'on! ❌"
     await safe(bot.send_message(g.chat, f"👀 Ochildi: {len(cards)} ta karta, {verdict}"))
+    for c in cards:
+        if c in RFID: await safe(bot.send_sticker(g.chat, RFID[c]))
     dead, p = g.spin(loser)
     res = f"🔫 {mention(g, loser)} revolver aylantiradi ({round(p * 100)}% ehtimol): " + ("💥 o'ldi, o'yindan chiqdi" if dead else "😮‍💨 omon qoldi")
     await safe(bot.send_message(g.chat, res, parse_mode="HTML"))
@@ -266,6 +280,18 @@ async def lchallenge(g, seat):
     await lround(g)
     await lturn(g)
     return True
+
+async def lpick(q):
+    g = games.get(where.get(q.from_user.id))
+    if not isinstance(g, LGame) or not g.started:
+        return await q.answer("O'yin yo'q", show_alert=True)
+    s = g.seat(q.from_user.id)
+    rank = q.data[2:]
+    if s is None or not g.play(s, rank):
+        return await q.answer("Bu karta hozir tashlanmaydi", show_alert=True)
+    if BACK: await safe(bot.send_sticker(g.chat, BACK))
+    await q.answer(f"{RUS[rank]} tashlandi")
+    await lturn(g)
 
 async def lcb(q, g, u):
     if q.data == "j":
@@ -288,6 +314,18 @@ async def lcb(q, g, u):
     if q.data == "c":
         if not await lchallenge(g, s): return await q.answer("Hozir yolg'onchi deb bo'lmaydi", show_alert=True)
         return await q.answer()
+    if q.data == "h":
+        if not g.hands[s]: return await q.answer("Kartangiz yo'q", show_alert=True)
+        lines = "\n".join(f"{i + 1} - {RUS[r]}" for i, r in enumerate(g.hands[s]))
+        return await q.answer("Kartalaringiz:\n" + lines, show_alert=True)
+    if q.data.startswith("n:"):
+        if g.cur != s: return await q.answer("Hozir navbat sizda emas", show_alert=True)
+        idx = int(q.data[2:])
+        if len(g.played) >= 3 or idx >= len(g.hands[s]) or not g.play(s, g.hands[s][idx]):
+            return await q.answer("Bu karta hozir tashlanmaydi", show_alert=True)
+        await safe(bot.send_message(g.chat, "🂠 Karta tashlandi"))
+        await q.answer("Tashlandi")
+        return await lturn(g)
     if q.data == "i":
         if not g.trust(s): return await q.answer("Hozir ishonib bo'lmaydi", show_alert=True)
         await q.answer()
