@@ -228,13 +228,10 @@ async def lround(g):
     old = getattr(g, "rpin", None)
     if old: await safe(bot.unpin_chat_message(g.chat, old))
     g.rpin = None
-    await safe(bot.send_message(g.chat, f"🔄 Yangi raund! Stol kartasi: <b>{RUS[g.table]}</b>", parse_mode="HTML"))
-    stk = RFID.get(g.table)
-    if stk:
-        s = await safe(bot.send_sticker(g.chat, stk))
-        if s:
-            g.rpin = s.message_id
-            await safe(bot.pin_chat_message(g.chat, s.message_id, disable_notification=True))
+    t = await safe(bot.send_message(g.chat, f"🃏 Stol kartasi: <b>{RUS[g.table]}</b>", parse_mode="HTML"))
+    if t:
+        g.rpin = t.message_id
+        await safe(bot.pin_chat_message(g.chat, t.message_id, disable_notification=True))
 
 async def lbegin(g):
     g.start()
@@ -273,6 +270,8 @@ async def lchallenge(g, seat):
         await edit(g, lsummary(g))
         await cleanup(g)
         return True
+    if dead:
+        await safe(bot.send_message(g.chat, f"💀 {html.escape(g.names[loser])} o'yindan chiqdi. Keyingi round!"))
     g.new_round(loser)
     await edit(g, lrender(g))
     await lround(g)
@@ -341,6 +340,7 @@ async def chosen(r: ChosenInlineResult):
     if s is None or not g.play(s, rank):
         await safe(bot.send_message(g.chat, f"❌ {html.escape(r.from_user.first_name)}, bu karta hozir tashlanmaydi"))
         return
+    if BACK: await safe(bot.send_sticker(g.chat, BACK))
     await lturn(g)
 
 @dp.message(F.via_bot)
