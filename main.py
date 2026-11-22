@@ -179,8 +179,7 @@ async def iq(q: InlineQuery):
         res = [InlineQueryResultArticle(
                 id=f"{i}-{r}", title=RUS[r], description="Yashirin tashlash",
                 thumbnail_url=f"{BASE}/c/{'JOKER' if r == 'J' else r + 'H'}.jpg", thumbnail_width=320, thumbnail_height=448,
-                input_message_content=InputTextMessageContent(message_text="🂠 Karta tashlandi"),
-                reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="🂠", callback_data="x")]]))
+                input_message_content=InputTextMessageContent(message_text="🂠 Karta tashlandi"))
                for i, r in enumerate(g.hands[s])]
         return await q.answer(res, cache_time=0, is_personal=True)
     cards = sort_cards(g.legal(g.seat(q.from_user.id))) if g and g.started else []
@@ -219,8 +218,7 @@ async def lturn(g):
         rows = []
     kb_rows = []
     if len(g.played) < 3 and g.hands[g.cur]:
-        kb_rows.append([InlineKeyboardButton(text=str(i + 1), callback_data=f"n:{i}") for i in range(len(g.hands[g.cur]))])
-    kb_rows.append([InlineKeyboardButton(text="🃏 Kartalarim", callback_data="h")])
+        kb_rows.append([InlineKeyboardButton(text="🃏 Karta tanlash", switch_inline_query_current_chat="")])
     kb_rows += [[InlineKeyboardButton(text=t, callback_data=d) for t, d in r] for r in rows]
     markup = InlineKeyboardMarkup(inline_keyboard=kb_rows)
     m = await safe(bot.send_message(g.chat, txt, reply_markup=markup, parse_mode="HTML"))
@@ -341,10 +339,8 @@ async def chosen(r: ChosenInlineResult):
     s = g.seat(r.from_user.id)
     rank = r.result_id.split("-", 1)[-1]
     if s is None or not g.play(s, rank):
-        if r.inline_message_id:
-            await safe(bot.edit_message_text("❌ Bu karta tashlanmadi", inline_message_id=r.inline_message_id))
+        await safe(bot.send_message(g.chat, f"❌ {html.escape(r.from_user.first_name)}, bu karta hozir tashlanmaydi"))
         return
-    if BACK: await safe(bot.send_sticker(g.chat, BACK))
     await lturn(g)
 
 @dp.message(F.via_bot)
