@@ -201,9 +201,8 @@ def lrender(g):
 
 def lsummary(g):
     w = g.alive[0]
-    left = "\n".join(f"{html.escape(g.names[i])}: {'💀 chiqdi' if i not in g.alive else 'tirik'}" for i in range(g.n))
     mins = max(1, round((time.time() - g.t0) / 60))
-    return f"🏆 <b>{html.escape(g.names[w])}</b> yutdi!\n\n{left}\n\n⏳ O'yin vaqti: {mins} daqiqa"
+    return f"🏆 {mention(g, w)} yutdi!\n\n⏳ O'yin vaqti: {mins} daqiqa"
 
 async def lturn(g):
     if g.turn_mid: await safe(bot.delete_message(g.chat, g.turn_mid))
@@ -228,6 +227,8 @@ async def lround(g):
     old = getattr(g, "rpin", None)
     if old: await safe(bot.unpin_chat_message(g.chat, old))
     g.rpin = None
+    stk = RFID.get(g.table)
+    if stk: await safe(bot.send_sticker(g.chat, stk))
     t = await safe(bot.send_message(g.chat, f"🃏 Stol kartasi: <b>{RUS[g.table]}</b>", parse_mode="HTML"))
     if t:
         g.rpin = t.message_id
