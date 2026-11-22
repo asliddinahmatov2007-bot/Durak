@@ -33,6 +33,7 @@ async def load_stickers():
         if len(st.stickers) >= 38:
             j = st.stickers[37]
             LUNQ[j.file_unique_id] = "J"; RFID["J"] = j.file_id
+        print("Stikerlar yuklandi:", len(STK), "karta,", len(RFID), "daraja")
     except Exception as e:
         print("Stikerlar yuklanmadi:", e)
 
@@ -229,6 +230,7 @@ async def lround(g):
     g.rpin = None
     stk = RFID.get(g.table)
     if stk: await safe(bot.send_sticker(g.chat, stk))
+    else: await safe(bot.send_photo(g.chat, BufferedInputFile(by_name(g.table + "H"), "t.jpg")))
     t = await safe(bot.send_message(g.chat, f"🃏 Stol kartasi: <b>{RUS[g.table]}</b>", parse_mode="HTML"))
     if t:
         g.rpin = t.message_id
@@ -273,11 +275,17 @@ async def lchallenge(g, seat):
         return True
     if dead:
         await safe(bot.send_message(g.chat, f"💀 {html.escape(g.names[loser])} o'yindan chiqdi. Keyingi round!"))
-    g.new_round(loser)
+    g.cur = None          # o'yin to'xtaydi: hech kim tashlay olmaydi
+    g.waiting = loser
     await edit(g, lrender(g))
-    await lround(g)
-    await lturn(g)
+    await lwait(g)
     return True
+
+async def lwait(g):
+    if g.turn_mid: await safe(bot.delete_message(g.chat, g.turn_mid))
+    m = await safe(bot.send_message(g.chat, "⏸ Keyingi raund uchun tugmani bosing",
+                                    reply_markup=kb([[("▶️ Keyingi round", "nr")]])))
+    g.turn_mid = m.message_id if m else None
 
 async def lpick(q):
     g = games.get(where.get(q.from_user.id))
@@ -306,6 +314,14 @@ async def lcb(q, g, u):
     s = g.seat(u.id)
     if s is None or not g.started: return await q.answer("Siz o'yinda emassiz", show_alert=True)
     if s not in g.alive: return await q.answer("Siz o'yindan chiqqansiz", show_alert=True)
+    if q.data == "nr":
+        if getattr(g, "waiting", None) is None:
+            return await q.answer("Hozir kerak emas", show_alert=True)
+        g.new_round(g.waiting); g.waiting = None
+        await edit(g, lrender(g))
+        await lround(g)
+        await lturn(g)
+        return await q.answer()
     if q.data == "e":
         if not await lend(g, s): return await q.answer("Hozir tugatib bo'lmaydi", show_alert=True)
         return await q.answer()
