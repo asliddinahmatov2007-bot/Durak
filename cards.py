@@ -58,7 +58,22 @@ def card_jpg(code):
     out = io.BytesIO(); img.save(out, "JPEG", quality=88)
     return out.getvalue()
 
-def by_name(n):  # "10H" -> jpg
+@lru_cache(maxsize=2)
+def joker_jpg():
+    img = Image.new("RGB", (W, H), (47, 107, 63))
+    d = ImageDraw.Draw(img)
+    d.rounded_rectangle([8, 8, W - 8, H - 8], radius=26, fill=(250, 250, 250), outline=(190, 190, 190), width=2)
+    d.text((W // 2, H // 2 - 110), "JOKER", font=ImageFont.load_default(size=42), fill=(120, 40, 200), anchor="mm")
+    import math
+    cx, cy, R, r = W // 2, H // 2 + 20, 90, 40
+    pts = [(cx + (R if i % 2 == 0 else r) * math.cos(-math.pi / 2 + i * math.pi / 5),
+            cy + (R if i % 2 == 0 else r) * math.sin(-math.pi / 2 + i * math.pi / 5)) for i in range(10)]
+    d.polygon(pts, fill=(230, 150, 20))
+    out = io.BytesIO(); img.save(out, "JPEG", quality=88)
+    return out.getvalue()
+
+def by_name(n):  # "10H" -> jpg, "JOKER" -> joker
+    if n == "JOKER": return joker_jpg()
     rank, let = n[:-1], n[-1]
     if let not in LET or rank not in ["6", "7", "8", "9", "10", "J", "Q", "K", "A"]: raise ValueError
     return card_jpg(rank + SYM[LET.index(let)])

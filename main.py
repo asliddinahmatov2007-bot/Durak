@@ -177,6 +177,7 @@ async def iq(q: InlineQuery):
                 button=InlineQueryResultsButton(text="Hozir karta tashlay olmaysiz", start_parameter="info"))
         res = [InlineQueryResultArticle(
                 id=f"{i}-{r}", title=RUS[r], description="Yashirin tashlash",
+                thumbnail_url=f"{BASE}/c/{'JOKER' if r == 'J' else r + 'H'}.jpg", thumbnail_width=320, thumbnail_height=448,
                 input_message_content=InputTextMessageContent(message_text="🂠 Karta tashlandi"),
                 reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="🂠", callback_data="x")]]))
                for i, r in enumerate(g.hands[s])]
@@ -220,9 +221,13 @@ async def lturn(g):
     m = await safe(bot.send_message(g.chat, txt, reply_markup=markup, parse_mode="HTML"))
     g.turn_mid = m.message_id if m else None
 
+async def lround(g):
+    await safe(bot.send_message(g.chat, f"🔄 Yangi raund! Stol kartasi: <b>{RUS[g.table]}</b>", parse_mode="HTML"))
+
 async def lbegin(g):
     g.start()
     await edit(g, lrender(g))
+    await lround(g)
     await lturn(g)
 
 async def lclaim(g, seat, n):
@@ -258,6 +263,7 @@ async def lchallenge(g, seat):
         return True
     g.new_round(loser)
     await edit(g, lrender(g))
+    await lround(g)
     await lturn(g)
     return True
 
